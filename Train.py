@@ -23,11 +23,11 @@ class Train:
     def custom_ts_multi_data_prep(self, dataset, target, start, end):
         X = []
         y = []
-        start = start + self.config.WINDOW
+        start = start + self.config.WINDOWS
         if end is None:
             end = len(dataset) - self.config.HORIZON
         for i in range(start, end):
-            indices = range(i - self.config.WINDOW, i)
+            indices = range(i - self.config.WINDOWS, i)
             X.append(dataset.loc[indices, :])
             indicey = range(i + 1, i + 1 + self.config.HORIZON)
             y.append(target.loc[indicey, :])
