@@ -112,13 +112,11 @@ class Train:
         )
 
     def plot_performance(self):
-        plt.figure(figsize=(16, 9))
         plt.plot(self.history.history["loss"], label = "loss")
         plt.plot(self.history.history["val_loss"], label = "val_loss")
         plt.legend()
         plt.show()
         plt.close()
-        plt.figure(figsize=(16, 9))
         plt.plot(self.history.history["accuracy"], label = "accuracy")
         plt.plot(self.history.history["val_accuracy"], label = "val_accuracy")
         plt.legend()
