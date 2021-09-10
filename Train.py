@@ -3,55 +3,40 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 
-HIST_WINDOW = 30
-HORIZON = 1
-TRAIN_SPLIT = 0.2
-
-BATCH_SIZE = 256
-BUFFER_SIZE = 150
-
-EPOCHS = 150
-STEPS_PER_EPOCH = 100
-VALIDATION_STEPS = 50
-VERBOSE = 1
+from model_setup import Model_Setup
 
 # https://analyticsindiamag.com/how-to-do-multivariate-time-series-forecasting-using-lstm/
 
 
 class Train:
-    def __init__(self):
+    def __init__(self, CONFIG):
         self.history = None
         self.input_size = None
+        self.config = CONFIG
 
-    def dataset_df(self,df):
+    def dataset_df(self, df):
         df_data = df.loc[:, ~df.columns.str.startswith("v")]
         df_data = df_data.iloc[:, 1:]
 
         return df_data
 
-    def custom_ts_multi_data_prep(
-        self, dataset, target, start, end, window=HIST_WINDOW, horizon=HORIZON
-    ):
+    def custom_ts_multi_data_prep(self, dataset, target, start, end):
         X = []
         y = []
-        start = start + window
+        start = start + self.config.WINDOW
         if end is None:
-            end = len(dataset) - horizon
+            end = len(dataset) - self.config.HORIZON
         for i in range(start, end):
-            indices = range(i - window, i)
-            X.append(dataset.loc[indices,:])
-            indicey = range(i + 1, i + 1 + horizon)
-            y.append(target.loc[indicey,:])
+            indices = range(i - self.config.WINDOW, i)
+            X.append(dataset.loc[indices, :])
+            indicey = range(i + 1, i + 1 + self.config.HORIZON)
+            y.append(target.loc[indicey, :])
         return np.array(X), np.array(y)
 
     def x_y_split(self, x_data, y_data):
-        end_train = int((1 - TRAIN_SPLIT) * len(x_data))
-        x_train, y_train = self.custom_ts_multi_data_prep(
-            x_data, y_data, 0, end_train, window=HIST_WINDOW, horizon=HORIZON
-        )
-        x_vali, y_vali = self.custom_ts_multi_data_prep(
-            x_data, y_data, end_train, None, window=HIST_WINDOW, horizon=HORIZON
-        )
+        end_train = int((1 - self.config.TRAIN_SPLIT) * len(x_data))
+        x_train, y_train = self.custom_ts_multi_data_prep(x_data, y_data, 0, end_train)
+        x_vali, y_vali = self.custom_ts_multi_data_prep(x_data, y_data, end_train, None)
 
         return x_train, y_train, x_vali, y_vali
 
@@ -62,10 +47,15 @@ class Train:
         self.input_size = x_train.shape[-2:]
         # prepare trainig dataseet
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
-        train_data = train_data.cache().shuffle(BUFFER_SIZE).batch(BATCH_SIZE).repeat()
+        train_data = (
+            train_data.cache()
+            .shuffle(self.config.BUFFER_SIZE)
+            .batch(self.config.BATCH_SIZE)
+            .repeat()
+        )
         # prepare validation dataseet
         val_data = tf.data.Dataset.from_tensor_slices((x_vali, y_vali))
-        val_data = val_data.batch(BATCH_SIZE).repeat()
+        val_data = val_data.batch(self.config.BATCH_SIZE).repeat()
         return train_data, val_data
 
     def model(self):
@@ -73,20 +63,14 @@ class Train:
         lstm_model = tf.keras.models.Sequential(
             [
                 tf.keras.layers.Bidirectional(
-                    tf.keras.layers.LSTM(200, return_sequences=True),
+                    tf.keras.layers.LSTM(256, return_sequences=True),
                     input_shape=self.input_size,
                 ),
-                tf.keras.layers.Dense(100, activation="relu"),
-                tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(150)),
-                tf.keras.layers.Dense(20, activation="relu"),
-                tf.keras.layers.Dense(20, activation="relu"),
-                tf.keras.layers.Dense(units=HORIZON),
+                tf.keras.layers.Dense(32, activation="relu"),
+                tf.keras.layers.Dense(units=self.config.HORIZON),
             ]
         )
-        lstm_model.compile(
-            optimizer="adam", 
-            loss="mse",
-            metrics = ["accuracy"])
+        lstm_model.compile(optimizer="adam", loss="mse", metrics=["mae"])
         lstm_model.summary()
         return lstm_model
 
@@ -103,22 +87,22 @@ class Train:
         lstm_model = self.model()
         self.history = lstm_model.fit(
             train_data,
-            epochs=EPOCHS,
-            steps_per_epoch=STEPS_PER_EPOCH,
+            epochs=self.config.EPOCHS,
+            steps_per_epoch=self.config.STEPS_PER_EPOCH,
             validation_data=val_data,
-            validation_steps=VALIDATION_STEPS,
-            verbose=VERBOSE,
+            validation_steps=self.config.VALIDATION_STEPS,
+            verbose=self.config.VERBOSE,
             callbacks=callbacks,
         )
 
     def plot_performance(self):
-        plt.plot(self.history.history["loss"], label = "loss")
-        plt.plot(self.history.history["val_loss"], label = "val_loss")
+        plt.plot(self.history.history["loss"], label="loss")
+        plt.plot(self.history.history["val_loss"], label="val_loss")
         plt.legend()
         plt.show()
         plt.close()
-        plt.plot(self.history.history["accuracy"], label = "accuracy")
-        plt.plot(self.history.history["val_accuracy"], label = "val_accuracy")
+        plt.plot(self.history.history["rmse"], label="rmse")
+        plt.plot(self.history.history["val_rmse"], label="val_rmse")
         plt.legend()
         plt.show()
         plt.close()
