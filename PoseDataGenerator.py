@@ -5,19 +5,19 @@ import cv2
 import mediapipe as mp
 import numpy as np
 
-
-SHOW_WINDOW = False
-NUM_COORDS = 33
+from model_setup import Model_Setup
 
 
 class PoseDataGenerator:
-    def __init__(self, PATH=None):
+    def __init__(self, CONFIG):
         # visualing poses
         self.mp_drawing = mp.solutions.drawing_utils
         # importing pose estimation model
         self.mp_pose = mp.solutions.pose
         # holistic
         self.mp_holistic = mp.solutions.holistic
+        # CONFIG
+        self.config = CONFIG
 
     def pose_detection(self, PATH_VIDEO, RESULT_CSV):
         index = (
@@ -43,7 +43,7 @@ class PoseDataGenerator:
 
                 # pose_landmarks, left_hand_landmarks, right_hand_landmarks
 
-                if SHOW_WINDOW:
+                if self.config.SHOW_WINDOW:
                     # Recolor image back to BGR for rendering
                     image.flags.writeable = True
                     image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
@@ -59,19 +59,7 @@ class PoseDataGenerator:
                             color=(245, 66, 230), thickness=2, circle_radius=2
                         ),
                     )
-                    """
-                    # 2. Right hand
-                    mp_drawing.draw_landmarks(image, results.right_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
-                                            mp_drawing.DrawingSpec(color=(80,22,10), thickness=2, circle_radius=4),
-                                            mp_drawing.DrawingSpec(color=(80,44,121), thickness=2, circle_radius=2)
-                                            )
 
-                    # 3. Left Hand
-                    mp_drawing.draw_landmarks(image, results.left_hand_landmarks, mp_holistic.HAND_CONNECTIONS, 
-                                            mp_drawing.DrawingSpec(color=(121,22,76), thickness=2, circle_radius=4),
-                                            mp_drawing.DrawingSpec(color=(121,44,250), thickness=2, circle_radius=2)
-                                            )
-                    """
                 # Export coordinates
                 try:
                     # Extract Pose landmarks
@@ -90,20 +78,18 @@ class PoseDataGenerator:
                         ).flatten()
                     )
 
-                    # Concate rows (pose+face+hands)
-                    row = pose_row  # pose_hand + pose_face
                     # Append class name
-                    row.insert(0, index)
+                    pose_row.insert(0, index)
                     # Export to CSV
                     with open(RESULT_CSV, mode="a", newline="") as f:
                         csv_writer = csv.writer(
                             f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL
                         )
-                        csv_writer.writerow(row)
+                        csv_writer.writerow(pose_row)
 
                 except:
                     pass
-                if SHOW_WINDOW:
+                if self.config.SHOW_WINDOW:
                     cv2.imshow("press 'q' to quit", image)
                     if cv2.waitKey(10) & 0xFF == ord("q"):
                         break
@@ -112,7 +98,7 @@ class PoseDataGenerator:
     def create_csv(self, RESULT_CSV):
         if os.path.isfile(RESULT_CSV) == False:
             landmarks = ["clip"]
-            for val in range(NUM_COORDS):
+            for val in range(self.config.NUM_COORDS):
                 landmarks += [
                     "x{}".format(val),
                     "y{}".format(val),
