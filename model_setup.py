@@ -1,3 +1,8 @@
+import mediapipe as mp
+
+mp_pose = mp.solutions.pose
+
+
 class Model_Setup:
     """
     This class hasall the CONSTANTS and Hyperparameter
@@ -63,3 +68,4 @@ class Model_Setup:
         self._PRESENCE_THRESHOLD = _presence_threshold
         self._VISIBILITY_THRESHOLD = _visibility_threshold
         self._RGB_CHANNELS = _rgb_channels
+        self.POSE_CONNECTIONS = mp_pose.POSE_CONNECTIONS
