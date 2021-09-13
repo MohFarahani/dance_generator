@@ -14,31 +14,33 @@ class Model_Setup:
 
     def __init__(
         self,
-        hist_windows=24 * 3,
-        horizon=1,
-        train_split=0.2,
+        _presence_threshold=0.5,
+        _rgb_channels=3,
+        _visibility_threshold=0.5,
         batch_size=256,
+        black_color=(0, 0, 0),
+        blue_color=(255, 0, 0),
         buffer_size=150,
         epochs=150,
+        green_color=(0, 128, 0),
+        hist_windows=24 * 3,
+        horizon=1,
+        model="autoregression",
+        num_coords=33,
+        red_color=(0, 0, 255),
+        show_window=False,
         steps_per_epoch=100,
+        train_split=0.2,
         validation_steps=50,
         verbose=1,
-        show_window=False,
-        num_coords=33,
         white_color=(224, 224, 224),
-        black_color=(0, 0, 0),
-        red_color=(0, 0, 255),
-        green_color=(0, 128, 0),
-        blue_color=(255, 0, 0),
-        _presence_threshold=0.5,
-        _visibility_threshold=0.5,
-        _rgb_channels=3,
     ):
         # Train.py
         self.HIST_WINDOW = hist_windows
         self.HORIZON = horizon
         self.TRAIN_SPLIT = train_split
 
+        self.MODEL = model
         self.BATCH_SIZE = batch_size
         self.BUFFER_SIZE = buffer_size
 

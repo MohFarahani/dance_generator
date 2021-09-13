@@ -91,19 +91,38 @@ class Train:
 
     def model(self):
         # NN architecture
-        lstm_model = tf.keras.models.Sequential(
-            [
-                tf.keras.layers.Bidirectional(
-                    tf.keras.layers.LSTM(256, return_sequences=True),
-                    input_shape=self.input_size,
-                ),
-                tf.keras.layers.Dense(32, activation="relu"),
-                tf.keras.layers.Dense(units=self.config.HORIZON),
-            ]
-        )
-        lstm_model.compile(optimizer="adam", loss="mse", metrics=["mae"])
-        lstm_model.summary()
-        return lstm_model
+        if self.config.MODEL == "autoregression":
+            model = tf.keras.models.Sequential(
+                [
+                    tf.keras.layers.Bidirectional(
+                        tf.keras.layers.LSTM(256, return_sequences=True),
+                        input_shape=self.input_size,
+                    ),
+                    tf.keras.layers.Dense(32, activation="relu"),
+                    tf.keras.layers.Dense(units=self.config.HORIZON),
+                ]
+            )
+        elif self.config.MODEL == "autoencoder":
+            encoder_inputs = tf.keras.layers.Input(shape=(self.input_size))
+            encoder_l1 = tf.keras.layers.LSTM(100,return_sequences = True, return_state=True)
+            encoder_outputs1 = encoder_l1(encoder_inputs)
+            encoder_states1 = encoder_outputs1[1:]
+            encoder_l2 = tf.keras.layers.LSTM(100, return_state=True)
+            encoder_outputs2 = encoder_l2(encoder_outputs1[0])
+            encoder_states2 = encoder_outputs2[1:]
+            #
+            decoder_inputs = tf.keras.layers.RepeatVector(self.config.HORIZON)(encoder_outputs2[0])
+            #
+            decoder_l1 = tf.keras.layers.LSTM(100, return_sequences=True)(decoder_inputs,initial_state = encoder_states1)
+            decoder_l2 = tf.keras.layers.LSTM(100, return_sequences=True)(decoder_l1,initial_state = encoder_states2)
+            decoder_outputs2 = tf.keras.layers.TimeDistributed(tf.keras.layers.Dense(self.input_size[1]))(decoder_l2)
+            #
+            model = tf.keras.models.Model(encoder_inputs,decoder_outputs2)
+
+        model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+        model.summary()
+
+        return model
 
     def fit(self, RESULT_CSV):
         model_path = "Bidirectional_LSTM_Multivariate.h5"
@@ -115,8 +134,8 @@ class Train:
         )
         callbacks = [early_stopings, checkpoint]
         train_data, val_data = self.train_val_data(RESULT_CSV)
-        lstm_model = self.model()
-        self.history = lstm_model.fit(
+        model = self.model()
+        self.history = model.fit(
             train_data,
             epochs=self.config.EPOCHS,
             steps_per_epoch=self.config.STEPS_PER_EPOCH,
