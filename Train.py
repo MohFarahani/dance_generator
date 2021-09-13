@@ -2,6 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import os
 
 from model_setup import Model_Setup
 
@@ -31,7 +32,18 @@ class Train:
             X.append(dataset.loc[indices, :])
             indicey = range(i + 1, i + 1 + self.config.HORIZON)
             y.append(target.loc[indicey, :])
-        return np.array(X), np.array(y)
+        return X, y
+
+    def custom_ts_multi_data_prep_multi(self, X, y, dataset, target, start, end):
+        start = start + self.config.HIST_WINDOW
+        if end is None:
+            end = len(dataset) - self.config.HORIZON
+        for i in range(start, end):
+            indices = range(i - self.config.HIST_WINDOW, i)
+            X.append(dataset.loc[indices, :])
+            indicey = range(i + 1, i + 1 + self.config.HORIZON)
+            y.append(target.loc[indicey, :])
+        return X, y
 
     def x_y_split(self, x_data, y_data):
         end_train = int((1 - self.config.TRAIN_SPLIT) * len(x_data))
@@ -40,10 +52,29 @@ class Train:
 
         return x_train, y_train, x_vali, y_vali
 
-    def train_val_data(self, df):
+    def x_y_split_multifile(self, RESULTS_CSV):
+        x_train, y_train, x_vali, y_vali = [], [], [], []
+        for csvfile in os.listdir(RESULTS_CSV):
+            if csvfile.endswith(".csv"):
+                csvfile = RESULTS_CSV + "/" + csvfile
+                df_data = pd.read_csv(csvfile)
+                df_data = self.dataset_df(df_data)
+                end_train = int((1 - self.config.TRAIN_SPLIT) * len(df_data))
+
+                x_train, y_train = self.custom_ts_multi_data_prep_multi(
+                    x_train, y_train, df_data, df_data, 0, end_train
+                )
+                x_vali, y_vali = self.custom_ts_multi_data_prep_multi(
+                    x_vali, y_vali, df_data, df_data, end_train, None
+                )
+
+        return np.array(x_train), np.array(y_train), np.array(x_vali), np.array(y_vali)
+
+    def train_val_data(self, RESULT_CSV):
+
         # split data
-        df_data = self.dataset_df(df)
-        x_train, y_train, x_vali, y_vali = self.x_y_split(df_data, df_data)
+        x_train, y_train, x_vali, y_vali = self.x_y_split_multifile(RESULT_CSV)
+
         self.input_size = x_train.shape[-2:]
         # prepare trainig dataseet
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
@@ -74,7 +105,7 @@ class Train:
         lstm_model.summary()
         return lstm_model
 
-    def fit(self, df):
+    def fit(self, RESULT_CSV):
         model_path = "Bidirectional_LSTM_Multivariate.h5"
         early_stopings = tf.keras.callbacks.EarlyStopping(
             monitor="val_loss", min_delta=0, patience=10, verbose=1, mode="min"
@@ -83,7 +114,7 @@ class Train:
             model_path, monitor="val_loss", save_best_only=True, mode="min", verbose=0
         )
         callbacks = [early_stopings, checkpoint]
-        train_data, val_data = self.train_val_data(df)
+        train_data, val_data = self.train_val_data(RESULT_CSV)
         lstm_model = self.model()
         self.history = lstm_model.fit(
             train_data,
