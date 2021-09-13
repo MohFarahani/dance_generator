@@ -20,11 +20,14 @@ class PoseDataGenerator:
         self.config = CONFIG
 
     def pose_detection(self, PATH_VIDEO, RESULT_CSV):
-        index = (
+        name = (
             PATH_VIDEO.split("/")[-1]
             if PATH_VIDEO.split("/")[-1] != ""
             else PATH_VIDEO.split("/")[-2]
         )
+        name = name.split(".")[0]
+        RESULT_CSV = RESULT_CSV + "/coordinates_{}".format(name) + ".csv"
+
         cap = cv2.VideoCapture(PATH_VIDEO)
         with self.mp_holistic.Holistic(
             min_detection_confidence=0.5, min_tracking_confidence=0.5
@@ -79,7 +82,7 @@ class PoseDataGenerator:
                     )
 
                     # Append class name
-                    pose_row.insert(0, index)
+                    pose_row.insert(0, name)
                     # Export to CSV
                     with open(RESULT_CSV, mode="a", newline="") as f:
                         csv_writer = csv.writer(
@@ -95,7 +98,15 @@ class PoseDataGenerator:
                         break
             cap.release()
 
-    def create_csv(self, RESULT_CSV):
+    def create_csv(self, PATH_VIDEO, RESULT_CSV):
+        EXIST = False
+        name = (
+            PATH_VIDEO.split("/")[-1]
+            if PATH_VIDEO.split("/")[-1] != ""
+            else PATH_VIDEO.split("/")[-2]
+        )
+        name = name.split(".")[0]
+        RESULT_CSV = RESULT_CSV + "/coordinates_{}".format(name) + ".csv"
         if os.path.isfile(RESULT_CSV) == False:
             landmarks = ["clip"]
             for val in range(self.config.NUM_COORDS):
@@ -110,7 +121,17 @@ class PoseDataGenerator:
                     f, delimiter=",", quotechar='"', quoting=csv.QUOTE_MINIMAL
                 )
                 csv_writer.writerow(landmarks)
+        else:
+            EXIST = True
+        return EXIST
 
     def generate_pose(self, PATH_VIDEO, RESULT_EXCELL):
-        self.create_csv(RESULT_EXCELL)
-        self.pose_detection(PATH_VIDEO, RESULT_EXCELL)
+        EXIST = self.create_csv(PATH_VIDEO, RESULT_EXCELL)
+        if EXIST == False:
+            self.pose_detection(PATH_VIDEO, RESULT_EXCELL)
+
+    def generate_pose_multifile(self, PATH_VIDEO, RESULT_EXCELL):
+        for video in os.listdir(PATH_VIDEO):
+            # Video Feed
+            video = PATH_VIDEO + "/{}".format(video)
+            self.generate_pose(video, RESULT_EXCELL)
