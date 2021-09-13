@@ -1,8 +1,13 @@
 import dataclasses
 from typing import List, Mapping, Optional, Tuple, Union
 
+from model_setup import Model_Setup
+
 import matplotlib.pyplot as plt
 import pandas as pd
+
+import imageio
+from pathlib import Path
 
 NUM_COORDS = 33
 
@@ -27,11 +32,11 @@ class Landmark:
 
 
 class Landmark_list:
-    def __init__(self, list_size=None):
-
-        self.list_size = list_size
+    def __init__(self, config):
+        self.config = config
+        self.list_size = self.config.NUM_COORDS
         self.landmark_list = []
-        for i in range(list_size):
+        for i in range(self.list_size):
             obj = Landmark()
             self.landmark_list.append(obj)
 
@@ -56,6 +61,33 @@ class Landmark_list:
         self.load_df(df)
         return df
 
+
+def save_image(config, csv_file, IMAGE_PATH):
+    landmark_list = Landmark_list(config)
+    df = landmark_list.load_csv(csv_file)
+    # Plot every frame
+    index = 0
+    counter = 0
+    for i in range(len(df)):
+        if index % 24 == 0:
+            landmark_list = Landmark_list(config)
+            df_temp = df.iloc[i, :]
+            x = df_temp[df.columns.str.startswith("x")].to_numpy().flatten()
+            y = df_temp[df.columns.str.startswith("y")].to_numpy().flatten()
+            z = df_temp[df.columns.str.startswith("z")].to_numpy().flatten()
+            visibility = df_temp[df.columns.str.startswith("v")].to_numpy().flatten()
+            landmark_list.load_xyz(x, y, z, visibility)
+            plot_landmarks(
+                landmark_list,
+                config.POSE_CONNECTIONS,
+                counter=counter,
+                IMAGE_PATH=IMAGE_PATH,
+            )
+            counter += 1
+        else:
+            index += 1
+
+
 # Adopt the plot_landmarks from MediaPipe
 # https://github.com/google/mediapipe/blob/master/mediapipe/python/solutions/drawing_utils.py
 @dataclasses.dataclass
@@ -75,6 +107,8 @@ def _normalize_color(color):
 def plot_landmarks(
     landmark_list,
     connections: Optional[List[Tuple[int, int]]] = None,
+    counter=None,
+    IMAGE_PATH=None,
     landmark_drawing_spec: DrawingSpec = DrawingSpec(color=RED_COLOR, thickness=5),
     connection_drawing_spec: DrawingSpec = DrawingSpec(color=BLACK_COLOR, thickness=5),
     elevation: int = 10,
@@ -135,4 +169,14 @@ def plot_landmarks(
                     linewidth=connection_drawing_spec.thickness,
                 )
 
-        plt.show()
+        plt.savefig(IMAGE_PATH + "\\" + "fram_sec_{}.png".format(counter),dpi=50)
+
+
+def save_gif(IMAGE_PATH):
+    image_path = Path(IMAGE_PATH)
+    images = list(image_path.glob("*.png"))
+    image_list = []
+    for file_name in images:
+        image_list.append(imageio.imread(file_name))
+
+    imageio.mimwrite("animated_from_images.gif", image_list)
