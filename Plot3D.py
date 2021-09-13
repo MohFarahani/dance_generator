@@ -173,6 +173,8 @@ def plot_landmarks(
 
 
 def save_gif(IMAGE_PATH):
+    # https://medium.com/swlh/python-animated-images-6a85b9b68f86
+    
     image_path = Path(IMAGE_PATH)
     images = list(image_path.glob("*.png"))
     image_list = []
@@ -180,3 +182,8 @@ def save_gif(IMAGE_PATH):
         image_list.append(imageio.imread(file_name))
 
     imageio.mimwrite("animated_from_images.gif", image_list)
+    '''
+    from pygifsicle import optimizegif_path = 'animated_from_video.gif'# create a new one
+    optimize(gif_path, 'animated_from_video_optimized.gif')# overwrite the original one
+    optimize(gif_path)
+    '''
