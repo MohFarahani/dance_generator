@@ -40,6 +40,15 @@ class Landmark_list:
             obj = Landmark()
             self.landmark_list.append(obj)
 
+        self.Min_Max_axis = {
+            "x_min": None,
+            "x_max": None,
+            "y_min": None,
+            "y_max": None,
+            "z_min": None,
+            "z_max": None,
+        }
+
     def load_xyz(self, x, y, z, visibility):
         for i, landmark in enumerate(self.landmark_list):
             self.landmark_list[i].x = x[i]
@@ -54,6 +63,13 @@ class Landmark_list:
         z = df.loc[:, df.columns.str.startswith("z")].to_numpy().flatten()
         visibility = df.loc[:, df.columns.str.startswith("v")].to_numpy().flatten()
 
+        self.Min_Max_axis["x_min"] = min(x)
+        self.Min_Max_axis["x_max"] = max(x)
+        self.Min_Max_axis["y_min"] = min(y)
+        self.Min_Max_axis["y_max"] = max(y)
+        self.Min_Max_axis["z_min"] = min(z)
+        self.Min_Max_axis["z_max"] = max(z)
+
         self.load_xyz(x, y, z, visibility)
 
     def load_csv(self, RESULT_CSV):
@@ -63,8 +79,9 @@ class Landmark_list:
 
 
 def save_image(config, csv_file, IMAGE_PATH):
-    landmark_list = Landmark_list(config)
-    df = landmark_list.load_csv(csv_file)
+    landmark_list_all = Landmark_list(config)
+    df = landmark_list_all.load_csv(csv_file)
+    landmark_list_all.load_df(df)
     # Plot every frame
     index = 0
     counter = 0
@@ -82,6 +99,7 @@ def save_image(config, csv_file, IMAGE_PATH):
                 config.POSE_CONNECTIONS,
                 counter=counter,
                 IMAGE_PATH=IMAGE_PATH,
+                Min_Max_axis=landmark_list_all.Min_Max_axis,
             )
             counter += 1
         else:
@@ -109,6 +127,7 @@ def plot_landmarks(
     connections: Optional[List[Tuple[int, int]]] = None,
     counter=None,
     IMAGE_PATH=None,
+    Min_Max_axis=None,
     landmark_drawing_spec: DrawingSpec = DrawingSpec(color=RED_COLOR, thickness=5),
     connection_drawing_spec: DrawingSpec = DrawingSpec(color=BLACK_COLOR, thickness=5),
     elevation: int = 10,
@@ -132,6 +151,10 @@ def plot_landmarks(
         return
     fig = plt.figure(figsize=(10, 10))
     ax = plt.axes(projection="3d")
+    if Min_Max_axis:
+        ax.set_xlim3d(-1 * Min_Max_axis["z_max"], -1 * Min_Max_axis["z_min"])
+        ax.set_ylim3d(Min_Max_axis["x_min"], Min_Max_axis["x_max"])
+        ax.set_zlim3d(-1 * Min_Max_axis["y_max"], -1 * Min_Max_axis["y_min"])
     ax.view_init(elev=elevation, azim=azimuth)
     plotted_landmarks = {}
     for idx, landmark in enumerate(landmark_list.landmark_list):
@@ -169,12 +192,12 @@ def plot_landmarks(
                     linewidth=connection_drawing_spec.thickness,
                 )
 
-        plt.savefig(IMAGE_PATH + "\\" + "fram_sec_{}.png".format(counter),dpi=50)
+        plt.savefig(IMAGE_PATH + "\\" + "fram_sec_{}.png".format(counter), dpi=50)
 
 
 def save_gif(IMAGE_PATH):
     # https://medium.com/swlh/python-animated-images-6a85b9b68f86
-    
+
     image_path = Path(IMAGE_PATH)
     images = list(image_path.glob("*.png"))
     image_list = []
@@ -182,8 +205,9 @@ def save_gif(IMAGE_PATH):
         image_list.append(imageio.imread(file_name))
 
     imageio.mimwrite("animated_from_images.gif", image_list)
-    '''
-    from pygifsicle import optimizegif_path = 'animated_from_video.gif'# create a new one
+    """
+    from pygifsicle import optimize
+    gif_path = 'animated_from_video.gif'# create a new one
     optimize(gif_path, 'animated_from_video_optimized.gif')# overwrite the original one
     optimize(gif_path)
-    '''
+    """
