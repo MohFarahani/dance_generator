@@ -101,9 +101,8 @@ def save_image(config, csv_file, IMAGE_PATH):
                 IMAGE_PATH=IMAGE_PATH,
                 Min_Max_axis=landmark_list_all.Min_Max_axis,
             )
-            counter += 1
-        else:
-            index += 1
+            counter += 1   
+        index += 1
 
 
 # Adopt the plot_landmarks from MediaPipe
