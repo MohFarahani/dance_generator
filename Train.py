@@ -76,6 +76,7 @@ class Train:
         x_train, y_train, x_vali, y_vali = self.x_y_split_multifile(RESULT_CSV)
 
         self.input_size = x_train.shape[-2:]
+        self.output_size = self.input_size[1]
         # prepare trainig dataseet
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
         train_data = (
@@ -98,8 +99,8 @@ class Train:
                         tf.keras.layers.LSTM(256, return_sequences=True),
                         input_shape=self.input_size,
                     ),
-                    tf.keras.layers.Dense(32, activation="relu"),
-                    tf.keras.layers.Dense(units=self.config.HORIZON),
+                    tf.keras.layers.Dense(128, activation="relu"),
+                    tf.keras.layers.Dense(units=self.output_size),
                 ]
             )
         elif self.config.MODEL == "autoencoder":
@@ -124,7 +125,7 @@ class Train:
                 decoder_l1, initial_state=encoder_states2
             )
             decoder_outputs2 = tf.keras.layers.TimeDistributed(
-                tf.keras.layers.Dense(self.input_size[1])
+                tf.keras.layers.Dense(self.output_size)
             )(decoder_l2)
             #
             model = tf.keras.models.Model(encoder_inputs, decoder_outputs2)
@@ -135,7 +136,7 @@ class Train:
         return model
 
     def fit(self, RESULT_CSV):
-        model_path = "Bidirectional_LSTM_Multivariate.h5"
+        model_path = self.config.MODEL
         early_stopings = tf.keras.callbacks.EarlyStopping(
             monitor="val_loss", min_delta=0, patience=10, verbose=1, mode="min"
         )
@@ -161,8 +162,24 @@ class Train:
         plt.legend()
         plt.show()
         plt.close()
-        plt.plot(self.history.history["rmse"], label="rmse")
-        plt.plot(self.history.history["val_rmse"], label="val_rmse")
+        plt.plot(self.history.history["mae"], label="mae")
+        plt.plot(self.history.history["val_mae"], label="val_mae")
         plt.legend()
         plt.show()
         plt.close()
+
+    def generator(self, MODEL_PATH, df_init, frames_future):
+        model = tf.keras.models.load_model(MODEL_PATH)
+        model.summary()
+        for _ in range(frames_future):
+            X = []
+            X.append(df_init.iloc[-self.config.HIST_WINDOW:, :])
+            x = np.array(X)
+            prediction = model.predict(x)
+            print(np.array(prediction).shape)
+            data_to_append = {}
+            for i in range(len(df_init.columns)):
+                data_to_append[df_init.columns[i]] = prediction[i]
+            df_init = df_init.append(data_to_append, ignore_index=True)
+        df_init.to_csv("generate.csv")
+        
