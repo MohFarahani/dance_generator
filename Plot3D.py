@@ -8,6 +8,9 @@ import pandas as pd
 
 import imageio
 from pathlib import Path
+import os
+
+import cv2
 
 NUM_COORDS = 33
 
@@ -49,19 +52,21 @@ class Landmark_list:
             "z_max": None,
         }
 
-    def load_xyz(self, x, y, z, visibility):
+    def load_xyz(self, x, y, z, visibility=None):
         for i, landmark in enumerate(self.landmark_list):
             self.landmark_list[i].x = x[i]
             self.landmark_list[i].y = y[i]
             self.landmark_list[i].z = z[i]
-            self.landmark_list[i].visibility = visibility[i]
+            if visibility != None:
+                self.landmark_list[i].visibility = visibility[i]
 
     def load_df(self, df):
 
         x = df.loc[:, df.columns.str.startswith("x")].to_numpy().flatten()
         y = df.loc[:, df.columns.str.startswith("y")].to_numpy().flatten()
         z = df.loc[:, df.columns.str.startswith("z")].to_numpy().flatten()
-        visibility = df.loc[:, df.columns.str.startswith("v")].to_numpy().flatten()
+        if df.columns.str.startswith("v").any() != False:
+            visibility = df.loc[:, df.columns.str.startswith("v")].to_numpy().flatten()
 
         self.Min_Max_axis["x_min"] = min(x)
         self.Min_Max_axis["x_max"] = max(x)
@@ -70,7 +75,10 @@ class Landmark_list:
         self.Min_Max_axis["z_min"] = min(z)
         self.Min_Max_axis["z_max"] = max(z)
 
-        self.load_xyz(x, y, z, visibility)
+        if df.columns.str.startswith("v").any():
+            self.load_xyz(x, y, z, visibility)
+        else:
+            self.load_xyz(x, y, z)
 
     def load_csv(self, RESULT_CSV):
         df = pd.read_csv(RESULT_CSV)
@@ -86,7 +94,7 @@ def save_image(config, csv_file, IMAGE_PATH):
     index = 0
     counter = 0
     for i in range(len(df)):
-        if index % 24 == 0:
+        if index % 1 == 0:
             landmark_list = Landmark_list(config)
             df_temp = df.iloc[i, :]
             x = df_temp[df.columns.str.startswith("x")].to_numpy().flatten()
@@ -101,7 +109,7 @@ def save_image(config, csv_file, IMAGE_PATH):
                 IMAGE_PATH=IMAGE_PATH,
                 Min_Max_axis=landmark_list_all.Min_Max_axis,
             )
-            counter += 1   
+            counter += 1
         index += 1
 
 
@@ -190,8 +198,7 @@ def plot_landmarks(
                     color=_normalize_color(connection_drawing_spec.color[::-1]),
                     linewidth=connection_drawing_spec.thickness,
                 )
-
-        plt.savefig(IMAGE_PATH + "\\" + "fram_sec_{}.png".format(counter), dpi=50)
+        plt.savefig(os.path.join(IMAGE_PATH, "fram_sec_{}.png".format(counter)), dpi=50)
 
 
 def save_gif(IMAGE_PATH):
@@ -210,3 +217,22 @@ def save_gif(IMAGE_PATH):
     optimize(gif_path, 'animated_from_video_optimized.gif')# overwrite the original one
     optimize(gif_path)
     """
+
+
+def save_video(IMAGE_PATH):
+    image_folder = IMAGE_PATH
+    video_name = "video.avi"
+
+    images = [img for img in os.listdir(image_folder) if img.endswith(".png")]
+    frame = cv2.imread(os.path.join(image_folder, images[0]))
+    height, width, layers = frame.shape
+    fps = 6
+    video = cv2.VideoWriter(
+        video_name, cv2.VideoWriter_fourcc(*"DIVX"), fps=fps, frameSize=(width, height)
+    )
+
+    for image in images:
+        video.write(cv2.imread(os.path.join(image_folder, image)))
+
+    cv2.destroyAllWindows()
+    video.release()

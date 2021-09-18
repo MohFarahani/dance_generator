@@ -75,8 +75,7 @@ class Train:
         # split data
         x_train, y_train, x_vali, y_vali = self.x_y_split_multifile(RESULT_CSV)
 
-        self.input_size = x_train.shape[-2:]
-        self.output_size = self.input_size[1]
+        self.past_size, self.features = x_train.shape[-2:]
         # prepare trainig dataseet
         train_data = tf.data.Dataset.from_tensor_slices((x_train, y_train))
         train_data = (
@@ -97,20 +96,26 @@ class Train:
                 [
                     tf.keras.layers.Bidirectional(
                         tf.keras.layers.LSTM(256, return_sequences=True),
-                        input_shape=self.input_size,
+                        input_shape=(self.past_size, self.features),
+                    ),
+                    tf.keras.layers.Bidirectional(
+                        tf.keras.layers.LSTM(128, return_sequences=False),
+                        input_shape=(self.past_size, self.features),
                     ),
                     tf.keras.layers.Dense(128, activation="relu"),
-                    tf.keras.layers.Dense(units=self.output_size),
+                    tf.keras.layers.Dense(self.features),
                 ]
             )
         elif self.config.MODEL == "autoencoder":
-            encoder_inputs = tf.keras.layers.Input(shape=(self.input_size))
+            encoder_inputs = tf.keras.layers.Input(
+                shape=(self.past_size, self.features)
+            )
             encoder_l1 = tf.keras.layers.LSTM(
-                100, return_sequences=True, return_state=True
+                256, return_sequences=True, return_state=True
             )
             encoder_outputs1 = encoder_l1(encoder_inputs)
             encoder_states1 = encoder_outputs1[1:]
-            encoder_l2 = tf.keras.layers.LSTM(100, return_state=True)
+            encoder_l2 = tf.keras.layers.LSTM(256, return_state=True)
             encoder_outputs2 = encoder_l2(encoder_outputs1[0])
             encoder_states2 = encoder_outputs2[1:]
             #
@@ -118,14 +123,14 @@ class Train:
                 encoder_outputs2[0]
             )
             #
-            decoder_l1 = tf.keras.layers.LSTM(100, return_sequences=True)(
+            decoder_l1 = tf.keras.layers.LSTM(256, return_sequences=True)(
                 decoder_inputs, initial_state=encoder_states1
             )
-            decoder_l2 = tf.keras.layers.LSTM(100, return_sequences=True)(
+            decoder_l2 = tf.keras.layers.LSTM(256, return_sequences=True)(
                 decoder_l1, initial_state=encoder_states2
             )
             decoder_outputs2 = tf.keras.layers.TimeDistributed(
-                tf.keras.layers.Dense(self.output_size)
+                tf.keras.layers.Dense(self.features)
             )(decoder_l2)
             #
             model = tf.keras.models.Model(encoder_inputs, decoder_outputs2)
@@ -173,13 +178,9 @@ class Train:
         model.summary()
         for _ in range(frames_future):
             X = []
-            X.append(df_init.iloc[-self.config.HIST_WINDOW:, :])
+            X.append(df_init.loc[-self.config.HIST_WINDOW :, :])
             x = np.array(X)
             prediction = model.predict(x)
-            print(np.array(prediction).shape)
-            data_to_append = {}
-            for i in range(len(df_init.columns)):
-                data_to_append[df_init.columns[i]] = prediction[i]
+            data_to_append = pd.DataFrame(prediction, columns=df_init.columns)
             df_init = df_init.append(data_to_append, ignore_index=True)
         df_init.to_csv("generate.csv")
-        
