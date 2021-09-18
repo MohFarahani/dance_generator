@@ -132,3 +132,8 @@ dmypy.json
 videos/
 results/
 images/
+
+# ignore images and videos
+*.png
+*.mp4
+*.pb
