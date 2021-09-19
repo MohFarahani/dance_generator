@@ -91,22 +91,22 @@ class Train:
 
     def model(self):
         # NN architecture
-        if self.config.MODEL == "autoregression":
+        if self.config.MODEL_NAME == "autoregression":
             model = tf.keras.models.Sequential(
                 [
                     tf.keras.layers.Bidirectional(
-                        tf.keras.layers.LSTM(256, return_sequences=True),
+                        tf.keras.layers.LSTM(128, return_sequences=True),
                         input_shape=(self.past_size, self.features),
                     ),
                     tf.keras.layers.Bidirectional(
-                        tf.keras.layers.LSTM(128, return_sequences=False),
+                        tf.keras.layers.LSTM(64, return_sequences=False),
                         input_shape=(self.past_size, self.features),
                     ),
                     tf.keras.layers.Dense(128, activation="relu"),
                     tf.keras.layers.Dense(self.features),
                 ]
             )
-        elif self.config.MODEL == "autoencoder":
+        elif self.config.MODEL_NAME == "autoencoder":
             encoder_inputs = tf.keras.layers.Input(
                 shape=(self.past_size, self.features)
             )
@@ -134,7 +134,8 @@ class Train:
             )(decoder_l2)
             #
             model = tf.keras.models.Model(encoder_inputs, decoder_outputs2)
-
+        elif self.config.MODEL_NAME == "custom":
+            model = self.config.MODEL
         model.compile(optimizer="adam", loss="mse", metrics=["mae"])
         model.summary()
 
@@ -177,9 +178,9 @@ class Train:
         model = tf.keras.models.load_model(MODEL_PATH)
         model.summary()
         for _ in range(frames_future):
-            X = []
-            X.append(df_init.loc[-self.config.HIST_WINDOW :, :])
-            x = np.array(X)
+            x = df_init.tail(self.config.HIST_WINDOW)
+            x = np.array(x)
+            x = np.expand_dims(x, axis=0)
             prediction = model.predict(x)
             data_to_append = pd.DataFrame(prediction, columns=df_init.columns)
             df_init = df_init.append(data_to_append, ignore_index=True)
