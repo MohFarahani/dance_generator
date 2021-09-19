@@ -206,6 +206,8 @@ def save_gif(IMAGE_PATH):
 
     image_path = Path(IMAGE_PATH)
     images = list(image_path.glob("*.png"))
+    images.sort(key=lambda x: int(x.split("_")[2].split(".")[0]), reverse=False)
+
     image_list = []
     for file_name in images:
         image_list.append(imageio.imread(file_name))
@@ -224,9 +226,10 @@ def save_video(IMAGE_PATH):
     video_name = "video.avi"
 
     images = [img for img in os.listdir(image_folder) if img.endswith(".png")]
+    images.sort(key=lambda x: int(x.split("_")[2].split(".")[0]), reverse=False)
     frame = cv2.imread(os.path.join(image_folder, images[0]))
     height, width, layers = frame.shape
-    fps = 6
+    fps = 24
     video = cv2.VideoWriter(
         video_name, cv2.VideoWriter_fourcc(*"DIVX"), fps=fps, frameSize=(width, height)
     )
