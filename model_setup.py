@@ -31,6 +31,7 @@ class Model_Setup:
         hist_windows=24 * 3,
         horizon=1,
         model_name="autoregression",
+        model = None,
         num_coords=33,
         red_color=(0, 0, 255),
         show_window=False,
@@ -46,7 +47,7 @@ class Model_Setup:
         self.TRAIN_SPLIT = train_split
 
         self.MODEL_NAME = model_name,
-        self.MODEL = None,
+        self.MODEL = model,
         self.BATCH_SIZE = batch_size
         self.BUFFER_SIZE = buffer_size
 
