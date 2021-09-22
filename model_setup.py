@@ -40,14 +40,21 @@ class Model_Setup:
         validation_steps=50,
         verbose=1,
         white_color=(224, 224, 224),
+        transformer_layers = 8,
+        num_heads = 4,
+        projection_dim = 99,
+        transformer_units = [99 * 2,99],
+        mlp_head_units = [1024, 512],
+
+
     ):
         # Train.py
         self.HIST_WINDOW = hist_windows
         self.HORIZON = horizon
         self.TRAIN_SPLIT = train_split
 
-        self.MODEL_NAME = model_name,
-        self.MODEL = model,
+        self.MODEL_NAME = model_name
+        self.MODEL = model
         self.BATCH_SIZE = batch_size
         self.BUFFER_SIZE = buffer_size
 
@@ -55,6 +62,13 @@ class Model_Setup:
         self.STEPS_PER_EPOCH = steps_per_epoch
         self.VALIDATION_STEPS = validation_steps
         self.VERBOSE = verbose
+
+        # Multihead attention
+        self.TRANSFORMER_LAYERS = transformer_layers
+        self.NUM_HEADS = num_heads
+        self.PROJECTION_DIM  =projection_dim
+        self.TRANSFORMER_UNITS  =transformer_units
+        self.MLP_HEAD_UNITS  =mlp_head_units        
 
         # PoseDataGenerator
         self.SHOW_WINDOW = show_window

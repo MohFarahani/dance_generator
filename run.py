@@ -18,18 +18,20 @@ INIT_CSV = 'initial'
 # The video that use for generation
 PATH_VIDEO_GEN = 'generator'
 # File of moddel that train has been done
-MODEL_PATH = 'autoregression'
+MODEL_PATH = 'multihead_attention'
 
 # Run parts
 TRAIN = True
 CREATE_IMAGES = False
 CREATE_GIF = False
 CREATE_VIDEO = False
-GENERATE_IMAGE = False
 POSE_GENERATION = False
+CREATE_IMAGES_GEN = False
+CREATE_VIDEO_GEN = False
+
 # Model config
 config = Model_Setup()
-config.HIST_WINDOW = 5*24
+config.HIST_WINDOW = 10*24
 config.MODEL_NAME = MODEL_PATH
 config.HDF = "data.h5"
 
@@ -65,6 +67,9 @@ df_init = train_obj.dataset_df(df_init)
 train_obj.generator(MODEL_PATH,df_init,frames_future=1000)
 
 # Animation Generator
-if GENERATE_IMAGE:
+if CREATE_IMAGES_GEN:
     save_image(config,'generate.csv',GENERATE_IMAGE_PATH)
+    #save_gif(GENERATE_IMAGE_PATH)
+
+if CREATE_VIDEO_GEN:
     save_video(GENERATE_IMAGE_PATH)

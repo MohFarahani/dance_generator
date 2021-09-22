@@ -5,6 +5,9 @@ import tensorflow as tf
 import os
 import h5py
 import tensorflow_io as tfio
+from tensorflow.keras import layers
+from tensorflow import keras
+
 from model_setup import Model_Setup
 
 # https://analyticsindiamag.com/how-to-do-multivariate-time-series-forecasting-using-lstm/
@@ -185,10 +188,43 @@ class Train:
                     tf.keras.layers.Dense(self.features),
                 ]
             )
-        elif self.config.MODEL_NAME=="attention":
-            # TODO
+        elif self.config.MODEL_NAME=="multihead_attention":
             # https://levelup.gitconnected.com/building-seq2seq-lstm-with-luong-attention-in-keras-for-time-series-forecasting-1ee00958decb
-            pass
+            # https://keras.io/examples/vision/image_classification_with_vision_transformer/
+            def mlp(x, hidden_units, dropout_rate):
+                for units in hidden_units:
+                    x = layers.Dense(units, activation=tf.nn.gelu)(x)
+                    x = layers.Dropout(dropout_rate)(x)
+                return x
+            inputs = layers.Input(shape=(self.past_size,self.features))
+            input_multihead = inputs
+            # Create multiple layers of the Transformer block.
+            for _ in range(self.config.TRANSFORMER_LAYERS):
+                # Layer normalization 1.
+                x1 = layers.LayerNormalization(epsilon=1e-6)(input_multihead)
+                # Create a multi-head attention layer.
+                attention_output = layers.MultiHeadAttention(
+                    num_heads=self.config.NUM_HEADS, key_dim=self.config.PROJECTION_DIM, dropout=0.1
+                )(x1, x1)
+                # Skip connection 1.
+                x2 = layers.Add()([attention_output, input_multihead])
+                # Layer normalization 2.
+                x3 = layers.LayerNormalization(epsilon=1e-6)(x2)
+                # MLP.
+                x3 = mlp(x3, hidden_units=self.config.TRANSFORMER_UNITS, dropout_rate=0.1)
+                # Skip connection 2.
+                input_multihead = layers.Add()([x3, x2])
+
+            # Create a [batch_size, projection_dim] tensor.
+            representation = layers.LayerNormalization(epsilon=1e-6)(inputs)
+            representation = layers.Flatten()(representation)
+            representation = layers.Dropout(0.5)(representation)
+            # Add MLP.
+            features = mlp(representation, hidden_units=self.config.MLP_HEAD_UNITS, dropout_rate=0.5)
+            # outputs
+            outputs = layers.Dense(self.features)(features)
+            # Create the Keras model.
+            model = keras.Model(inputs=inputs, outputs=outputs)
 
         elif self.config.MODEL_NAME == "custom":
             model = self.config.MODEL
