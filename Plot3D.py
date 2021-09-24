@@ -93,7 +93,7 @@ def save_image(config, csv_file, IMAGE_PATH):
     # Plot every frame
     index = 0
     counter = 0
-    for i in range(len(df)):
+    for i in range(480,len(df)):
         if index % 1 == 0:
             landmark_list = Landmark_list(config)
             df_temp = df.iloc[i, :]

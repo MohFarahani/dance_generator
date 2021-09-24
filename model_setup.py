@@ -45,10 +45,14 @@ class Model_Setup:
         projection_dim = 99,
         transformer_units = [99 * 2,99],
         mlp_head_units = [1024, 512],
+        hdf_name = 'data.h5',
+        create_hdf = True,
+        keep_frame = 1 ,
 
 
     ):
         # Train.py
+        self.KEEP_FRAME = keep_frame
         self.HIST_WINDOW = hist_windows
         self.HORIZON = horizon
         self.TRAIN_SPLIT = train_split
@@ -63,6 +67,8 @@ class Model_Setup:
         self.VALIDATION_STEPS = validation_steps
         self.VERBOSE = verbose
 
+        self.HDF = hdf_name 
+        self.CREATE_HDF= create_hdf
         # Multihead attention
         self.TRANSFORMER_LAYERS = transformer_layers
         self.NUM_HEADS = num_heads

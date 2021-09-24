@@ -3,6 +3,7 @@ from model_setup import Model_Setup
 from PoseDataGenerator import PoseDataGenerator
 from Plot3D import save_image,save_gif,save_video
 from Train import Train
+import pandas as pd
 
 # Folders
 # Video folders to use for trainig
@@ -18,23 +19,23 @@ INIT_CSV = 'initial'
 # The video that use for generation
 PATH_VIDEO_GEN = 'generator'
 # File of moddel that train has been done
-MODEL_PATH = 'multihead_attention'
+MODEL_PATH = 'autoregression'
 
 # Run parts
-TRAIN = True
+TRAIN = False
 CREATE_IMAGES = False
 CREATE_GIF = False
 CREATE_VIDEO = False
 POSE_GENERATION = False
-CREATE_IMAGES_GEN = False
-CREATE_VIDEO_GEN = False
-
+CREATE_IMAGES_GEN = True
+CREATE_VIDEO_GEN = True
+GENERATE_NEW_DANCE_CSV = True
 # Model config
 config = Model_Setup()
 config.HIST_WINDOW = 10*24
 config.MODEL_NAME = MODEL_PATH
 config.HDF = "data.h5"
-
+config.CREATE_HDF = False
 # Generate training data from Video Clip
 pose_data = PoseDataGenerator(config)
 if POSE_GENERATION:
@@ -58,13 +59,13 @@ if TRAIN:
     train_obj.plot_performance()
 
 #Generator
-import pandas as pd
 
-pose_data.generate_pose_multifile(PATH_VIDEO_GEN,INIT_CSV)
-df_init = pd.read_csv(INIT_CSV+'/'+'coordinates.csv')
+if GENERATE_NEW_DANCE_CSV:
+    #pose_data.generate_pose_multifile(PATH_VIDEO_GEN,INIT_CSV)
+    df_init = pd.read_csv(INIT_CSV+'/'+'coordinates.csv')
 
-df_init = train_obj.dataset_df(df_init)
-train_obj.generator(MODEL_PATH,df_init,frames_future=1000)
+    df_init = train_obj.dataset_df(df_init)
+    train_obj.generator(MODEL_PATH,df_init,frames_future=1000)
 
 # Animation Generator
 if CREATE_IMAGES_GEN:
