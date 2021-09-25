@@ -253,41 +253,48 @@ class Train:
         right_leg   = 5*3  #24-32
         left_leg    = 5*3  #23-31
         #
-        #inputs = layers.Input(shape=(self.past_size,self.features))
+        inputs = layers.Input(shape=(self.past_size,self.features))
         # Head model
-        inputs_head = layers.Input(shape=(self.past_size,head))
-        x_head = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_hand)
+        x_head = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+
+        #inputs_head = layers.Input(shape=(self.past_size,head))
+        #x_head = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_head)
         x_head = layers.LSTM(50, return_sequences=False)(x_head)
         x_head = layers.Dense(128, activation="relu")(x_head)
         x_head_out = layers.Dense(head)(x_head)
         # Right Hand Model
-        inputs_right_hand = layers.Input(shape=(self.past_size,right_hand))
-        x_right_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_hand)
+        x_right_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #inputs_right_hand = layers.Input(shape=(self.past_size,right_hand))
+        #x_right_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_hand)
         x_right_hand = layers.LSTM(50, return_sequences=False)(x_right_hand)
         x_right_hand = layers.Dense(128, activation="relu")(x_right_hand)
         x_right_hand_out = layers.Dense(right_hand)(x_right_hand)
         # Left Hand Model
-        inputs_left_hand = layers.Input(shape=(self.past_size,left_hand))
-        x_left_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_hand)
+        x_left_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #inputs_left_hand = layers.Input(shape=(self.past_size,left_hand))
+        #x_left_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_hand)
         x_left_hand = layers.LSTM(50, return_sequences=False)(x_left_hand)
         x_left_hand = layers.Dense(128, activation="relu")(x_left_hand)
         x_left_hand_out = layers.Dense(left_hand)(x_left_hand)
         # Right Leg Model
-        inputs_right_leg = layers.Input(shape=(self.past_size,right_leg))
-        x_right_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_leg)
+        x_right_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #inputs_right_leg = layers.Input(shape=(self.past_size,right_leg))
+        #x_right_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_leg)
         x_right_leg = layers.LSTM(50, return_sequences=False)(x_right_leg)
         x_right_leg = layers.Dense(128, activation="relu")(x_right_leg)
         x_right_leg_out = layers.Dense(right_leg)(x_right_leg)
         # Left Leg Model
-        inputs_left_leg = layers.Input(shape=(self.past_size,left_leg))
-        x_left_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_leg)
+        x_left_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)        
+        #inputs_left_leg = layers.Input(shape=(self.past_size,left_leg))
+        #x_left_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_leg)
         x_left_leg = layers.LSTM(50, return_sequences=False)(x_left_leg)
         x_left_leg = layers.Dense(128, activation="relu")(x_left_leg)
         x_left_leg_out = layers.Dense(left_leg)(x_left_leg)
 
-        model = keras.Model(input=[inputs_head,inputs_right_hand,inputs_left_hand,inputs_right_leg,inputs_left_leg],outputs=[x_head_out,x_right_hand_out,x_left_hand_out,x_right_leg_out,x_left_leg_out])
+        #model = keras.Model(input=[inputs_head,inputs_right_hand,inputs_left_hand,inputs_right_leg,inputs_left_leg],outputs=[x_head_out,x_right_hand_out,x_left_hand_out,x_right_leg_out,x_left_leg_out])
+        model = keras.Model(inputs=inputs,outputs=[x_head_out,x_right_hand_out,x_left_hand_out,x_right_leg_out,x_left_leg_out])
 
-        model.compile(optimizer="adam", loss=["mse","mse","mse","mse","mse"], metrics=["mae","mae","mae","mae","mae"])
+        model.compile(optimizer="adam", loss=["mse","mse","mse","mse","mse"], metrics=[["mae"],["mae"],["mae"],["mae"],["mae"]])
         model.summary()
 
         return model
@@ -334,6 +341,37 @@ class Train:
 
         #train_generator = tf.data.Dataset.from_generator(self.generator_train,(tf.float32,tf.float32,tf.float32),args=[self.config.BATCH_SIZE])
         #vali_generator = tf.data.Dataset.from_generator(self.generator_vali,(tf.float32,tf.float32,tf.float32),args=[self.config.BATCH_SIZE])
+
+        self.history = model.fit(
+            train_generator,
+            batch_size = self.config.BATCH_SIZE,
+            epochs=self.config.EPOCHS,
+            steps_per_epoch=self.config.STEPS_PER_EPOCH,
+            validation_data=vali_generator,
+            validation_steps=self.config.VALIDATION_STEPS,
+            verbose=self.config.VERBOSE,
+            callbacks=callbacks,
+            )
+        hdf.close()
+
+    def fit_multi_parts(self, RESULT_CSV):
+        model_path = self.config.MODEL_NAME +'.hdf5'
+        early_stopings = tf.keras.callbacks.EarlyStopping(
+            monitor="val_loss", min_delta=0, patience=10, verbose=1, mode="min"
+        )
+        checkpoint = tf.keras.callbacks.ModelCheckpoint(
+            model_path, monitor="val_loss", save_best_only=True, mode="min", verbose=0
+        )
+        callbacks = [early_stopings, checkpoint]
+        #train_data, val_data = self.train_val_data_HDF(RESULT_CSV)
+        if self.config.CREATE_HDF:
+            self.x_y_split_multifile(RESULT_CSV)
+        model = self.model_multi_parts()
+
+        hdf = h5py.File(self.config.HDF, "r")
+        
+        train_generator = Data_Generator_multi_parts(hdf['x_train'],hdf['y_train'],self.config.BATCH_SIZE)
+        vali_generator  = Data_Generator_multi_parts(hdf['x_vali'],hdf['y_vali'],self.config.BATCH_SIZE)
 
         self.history = model.fit(
             train_generator,
@@ -408,22 +446,59 @@ class Data_Generator_multi_parts(keras.utils.Sequence) :
     batch_x = self.x[idx * self.batch_size : (idx+1) * self.batch_size]
     batch_y = self.y[idx * self.batch_size : (idx+1) * self.batch_size]
     batch_y = np.reshape(batch_y, (batch_y.shape[0]*batch_y.shape[1], batch_y.shape[2]))
-       
-    return (batch_x,)
-
+    batch_y_head = batch_y[:,head_id]
+    batch_y_right_hand = batch_y[:,right_hand_id]   
+    batch_y_left_hand = batch_y[:,left_hand_id]   
+    batch_y_right_leg = batch_y[:,right_leg_id]   
+    batch_y_left_leg = batch_y[:,left_leg_id]  
+    return batch_x,[batch_y_head,batch_y_right_hand,batch_y_left_hand,batch_y_right_leg,batch_y_left_leg]
 
 def calc_id():
     head = [0,1,2,3,4,5,6,7,8,9,10]        #0-11
-    head_id = len(head)*[0]
+    head_id = 3*len(head)*[0]
     i = 0
     for value in range(0,11):
         head_id[i] = 3*value
         head_id[i+1] = 3*value + 1
         head_id[i+2] = 3*value + 2
         i += 3
-        
-       
+          
     right_hand  = [12,14,16,18,20,22]  #12-22
+    right_hand_id = 3*len(right_hand)*[0]
+    i = 0
+    for value in range(12,24,2):
+        right_hand_id[i] = 3*value
+        right_hand_id[i+1] = 3*value + 1
+        right_hand_id[i+2] = 3*value + 2
+        i += 3
+    
     left_hand   = [11,13,15,17,19,21] #11-21
+    left_hand_id = 3*len(left_hand)*[0]
+    i = 0
+    for value in range(11,23,2):
+        left_hand_id[i] = 3*value
+        left_hand_id[i+1] = 3*value + 1
+        left_hand_id[i+2] = 3*value + 2
+        i += 3
+
     right_leg   = [24,26,28,30,32]  #24-32
+    right_leg_id = 3*len(right_leg)*[0]
+    i = 0
+    for value in range(24,34,2):
+        right_leg_id[i] = 3*value
+        right_leg_id[i+1] = 3*value + 1
+        right_leg_id[i+2] = 3*value + 2
+        i += 3
+
     left_leg    = [23,25,27,29,31]  #23-31 
+    left_leg_id = 3*len(left_leg)*[0]
+    i = 0
+    for value in range(23,33,2):
+        left_leg_id[i] = 3*value
+        left_leg_id[i+1] = 3*value + 1
+        left_leg_id[i+2] = 3*value + 2
+        i += 3
+
+    return head_id,right_hand_id,left_hand_id,right_leg_id,left_leg_id
+
+head_id,right_hand_id,left_hand_id,right_leg_id,left_leg_id = calc_id()

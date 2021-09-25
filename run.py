@@ -19,17 +19,17 @@ INIT_CSV = 'initial'
 # The video that use for generation
 PATH_VIDEO_GEN = 'generator'
 # File of moddel that train has been done
-MODEL_PATH = 'autoregression'
+MODEL_PATH = 'multi_parts_lstm'
 
 # Run parts
-TRAIN = False
+TRAIN = True
 CREATE_IMAGES = False
 CREATE_GIF = False
 CREATE_VIDEO = False
 POSE_GENERATION = False
-CREATE_IMAGES_GEN = True
-CREATE_VIDEO_GEN = True
-GENERATE_NEW_DANCE_CSV = True
+CREATE_IMAGES_GEN = False
+CREATE_VIDEO_GEN = False
+GENERATE_NEW_DANCE_CSV = False
 # Model config
 config = Model_Setup()
 config.HIST_WINDOW = 10*24
@@ -55,7 +55,7 @@ if CREATE_VIDEO:
 # Train
 train_obj = Train(config)
 if TRAIN:
-    train_obj.fit(RESULT_CSV)
+    train_obj.fit_multi_parts(RESULT_CSV)
     train_obj.plot_performance()
 
 #Generator
