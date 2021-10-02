@@ -3,13 +3,15 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import os
+import copy
 import h5py
+from tensorflow.python.framework import config
 import tensorflow_io as tfio
 from tensorflow.keras import layers
 from tensorflow import keras
-
+import keras.backend as K
+import numpy as np
 from model_setup import Model_Setup
-
 # https://analyticsindiamag.com/how-to-do-multivariate-time-series-forecasting-using-lstm/
 class Train:
     def __init__(self, CONFIG):
@@ -22,7 +24,14 @@ class Train:
     def dataset_df(self, df):
         df_data = df.loc[:, ~df.columns.str.startswith("v")]
         df_data = df_data.iloc[:, 1:]
+        if self.config.SIMPLE_MODEL:
+            drop_id = [1,2,3,4,6,7,8,9,10,19,20,21,22]
+            for id in drop_id:
+                df_data = df_data.loc[:, ~df_data.columns.str.endswith("x{}".format(id))]
+                df_data = df_data.loc[:, ~df_data.columns.str.endswith("y{}".format(id))]
+                df_data = df_data.loc[:, ~df_data.columns.str.endswith("z{}".format(id))]
 
+        self.features = len(df_data.columns)
         return df_data
 
     def custom_ts_multi_data_prep(self, dataset, target, start, end):
@@ -63,7 +72,7 @@ class Train:
                 csvfile = RESULTS_CSV + "/" + csvfile
                 df_data = pd.read_csv(csvfile)
                 df_data = self.dataset_df(df_data)
-                df_data = df_data[df_data.index% self.config.KEEP_FRAME==0]
+                #df_data = df_data[df_data.index % self.config.KEEP_FRAME==0]
                 end_train = int((1 - self.config.TRAIN_SPLIT) * len(df_data))
 
                 x_train, y_train = self.custom_ts_multi_data_prep_multi(
@@ -76,7 +85,7 @@ class Train:
                 y_train = np.array(y_train)
                 x_vali = np.array(x_vali)
                 y_vali = np.array(y_vali)
-
+                print(csvfile)
                 if  os.path.isfile(self.config.HDF) == False:
                     with h5py.File(self.config.HDF, 'w') as hf:
                         hf.create_dataset('x_train', data=x_train,compression="gzip", chunks=True, maxshape=(None,self.config.HIST_WINDOW,3*self.config.NUM_COORDS))
@@ -143,7 +152,7 @@ class Train:
                         input_shape=(self.past_size, self.features),
                     ),
                     tf.keras.layers.Dropout(0.2),
-                    tf.keras.layers.Dense(128, activation="relu"),
+                    tf.keras.layers.Dense(256, activation="relu"),
                     tf.keras.layers.Dense(self.features),
                 ]
             )
@@ -167,7 +176,7 @@ class Train:
             decoder_l1 = tf.keras.layers.LSTM(256, return_sequences=True)(
                 decoder_inputs, initial_state=encoder_states1
             )
-            decoder_l2 = tf.keras.layers.LSTM(256, return_sequences=True)(
+            decoder_l2 = tf.keras.layers.LSTM(256, return_sequences=False)(
                 decoder_l1, initial_state=encoder_states2
             )
             decoder_outputs2 = tf.keras.layers.TimeDistributed(
@@ -176,18 +185,24 @@ class Train:
             #
             model = tf.keras.models.Model(encoder_inputs, decoder_outputs2)
         elif self.config.MODEL_NAME == "lstm":
-            model = tf.keras.models.Sequential(
-                [
-                    
-                    tf.keras.layers.LSTM(50, return_sequences=True,
+            model = tf.keras.models.Sequential()
+            model.add(tf.keras.layers.LSTM(256, return_sequences=True,
                     input_shape=(self.past_size, self.features)
-                    ),
-                    tf.keras.layers.LSTM(50, return_sequences=False
-                    ),
-                    tf.keras.layers.Dense(128, activation="relu"),
-                    tf.keras.layers.Dense(self.features),
-                ]
-            )
+                    ))
+            model.add(tf.keras.layers.LSTM(256, return_sequences=False
+                    ))
+            model.add(tf.keras.layers.Dense(1024, activation="relu"))
+            model.add(tf.keras.layers.Dropout(0.2))                 
+            model.add(tf.keras.layers.Dense(512, activation="relu"))
+            model.add(tf.keras.layers.Dropout(0.2))              
+            model.add(tf.keras.layers.Dense(256, activation="relu"))
+            model.add(tf.keras.layers.Dropout(0.1))                  
+            #model.add(tf.keras.layers.Dense(128, activation="relu"))
+            if self.config.PROBABILISTIC:
+                model.add(tf.keras.layers.Dense(2*self.features))
+            else:
+                model.add(tf.keras.layers.Dense(self.features))
+            
         elif self.config.MODEL_NAME=="multihead_attention":
             # https://levelup.gitconnected.com/building-seq2seq-lstm-with-luong-attention-in-keras-for-time-series-forecasting-1ee00958decb
             # https://keras.io/examples/vision/image_classification_with_vision_transformer/
@@ -197,7 +212,8 @@ class Train:
                     x = layers.Dropout(dropout_rate)(x)
                 return x
             inputs = layers.Input(shape=(self.past_size,self.features))
-            input_multihead = inputs
+
+            input_multihead = tf.identity(inputs)
             # Create multiple layers of the Transformer block.
             for _ in range(self.config.TRANSFORMER_LAYERS):
                 # Layer normalization 1.
@@ -225,25 +241,28 @@ class Train:
             outputs = layers.Dense(self.features)(features)
             # Create the Keras model.
             model = keras.Model(inputs=inputs, outputs=outputs)
-
+        elif self.config.MODEL_NAME == 'self_attention':
+            # https://www.kaggle.com/danofer/covid-rna-lstm-self-attention-keras-model
+            model = keras.models.Sequential()
+            model.add(keras.layers.Bidirectional(keras.layers.LSTM(256, return_sequences=True,input_shape=(self.past_size, self.features))))
+            model.add(Attention(return_sequences=True)) 
+            model.add(keras.layers.LSTM(256,return_sequences=False))
+            model.add(tf.keras.layers.Dense(256, activation="relu"))
+            model.add(tf.keras.layers.Dropout(0.2))                   
+            model.add(tf.keras.layers.Dense(128, activation="relu"))
+            model.add(tf.keras.layers.Dense(self.features))
+            model.build(input_shape=(None,self.past_size, self.features))         
+            
         elif self.config.MODEL_NAME == "custom":
             model = self.config.MODEL
-        model.compile(optimizer="adam", loss="mse", metrics=["mae"])
+
+        if self.config.PROBABILISTIC: 
+            model.compile(optimizer="adam", loss=gaussian_nll)
+        else:   
+            model.compile(optimizer="adam", loss="mse", metrics=["mae"])
         model.summary()
 
         return model
-
-    def generator_all(self,X,Y,batch_size):
-        while True:
-            x = X
-            size = X.shape[0]
-            y = Y
-            idx = 0
-            while True:
-                last_batch = idx + batch_size > size
-                end = idx + batch_size if not last_batch else size
-                yield (x[idx:end], np.reshape(y[idx:end], (y[idx:end].shape[0]*y[idx:end].shape[1], y.shape[2])))
-                idx = end if not last_batch else 0
 
     def model_multi_parts(self):
         # https://google.github.io/mediapipe/solutions/pose.html
@@ -255,39 +274,64 @@ class Train:
         #
         inputs = layers.Input(shape=(self.past_size,self.features))
         # Head model
-        x_head = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
-
+        #x_head = layers.LSTM(128, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
         #inputs_head = layers.Input(shape=(self.past_size,head))
         #x_head = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_head)
-        x_head = layers.LSTM(50, return_sequences=False)(x_head)
+        #x_head = layers.LSTM(128, return_sequences=False)(x_head)
+        #x_head = layers.Dense(128, activation="relu")(x_head)
+        #x_head_out = layers.Dense(head)(x_head)
+        x_head = layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size,self.features)))(inputs)
+        x_head = layers.LSTM(256, return_sequences=False)(x_head)
+        x_head = layers.Dense(512, activation="relu")(x_head)
+        x_head = layers.Dropout(0.4)(x_head)
         x_head = layers.Dense(128, activation="relu")(x_head)
         x_head_out = layers.Dense(head)(x_head)
         # Right Hand Model
-        x_right_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #x_right_hand = layers.LSTM(128, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
         #inputs_right_hand = layers.Input(shape=(self.past_size,right_hand))
         #x_right_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_hand)
-        x_right_hand = layers.LSTM(50, return_sequences=False)(x_right_hand)
+        #x_right_hand = layers.LSTM(100, return_sequences=False)(x_right_hand)
+        #x_right_hand = layers.Dense(128, activation="relu")(x_right_hand)
+        x_right_hand = layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size,self.features)))(inputs)
+        x_right_hand = layers.LSTM(256, return_sequences=False)(x_right_hand)
+        x_right_hand = layers.Dense(512, activation="relu")(x_right_hand)
+        x_right_hand = layers.Dropout(0.4)(x_right_hand)
         x_right_hand = layers.Dense(128, activation="relu")(x_right_hand)
         x_right_hand_out = layers.Dense(right_hand)(x_right_hand)
         # Left Hand Model
-        x_left_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #x_left_hand = layers.LSTM(128, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
         #inputs_left_hand = layers.Input(shape=(self.past_size,left_hand))
         #x_left_hand = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_hand)
-        x_left_hand = layers.LSTM(50, return_sequences=False)(x_left_hand)
+        #x_left_hand = layers.LSTM(100, return_sequences=False)(x_left_hand)
+        #x_left_hand = layers.Dense(128, activation="relu")(x_left_hand)
+        x_left_hand = layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size,self.features)))(inputs)
+        x_left_hand = layers.LSTM(256, return_sequences=False)(x_left_hand)
+        x_left_hand = layers.Dense(512, activation="relu")(x_left_hand)
+        x_left_hand = layers.Dropout(0.4)(x_left_hand)
         x_left_hand = layers.Dense(128, activation="relu")(x_left_hand)
         x_left_hand_out = layers.Dense(left_hand)(x_left_hand)
         # Right Leg Model
-        x_right_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
+        #x_right_leg = layers.LSTM(128, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)
         #inputs_right_leg = layers.Input(shape=(self.past_size,right_leg))
         #x_right_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_right_leg)
-        x_right_leg = layers.LSTM(50, return_sequences=False)(x_right_leg)
+        #x_right_leg = layers.LSTM(100, return_sequences=False)(x_right_leg)
+        #x_right_leg = layers.Dense(128, activation="relu")(x_right_leg)
+        x_right_leg = layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size,self.features)))(inputs)
+        x_right_leg = layers.LSTM(256, return_sequences=False)(x_right_leg)
+        x_right_leg = layers.Dense(512, activation="relu")(x_right_leg)
+        x_right_leg = layers.Dropout(0.4)(x_right_leg)
         x_right_leg = layers.Dense(128, activation="relu")(x_right_leg)
         x_right_leg_out = layers.Dense(right_leg)(x_right_leg)
         # Left Leg Model
-        x_left_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)        
+        #x_left_leg = layers.LSTM(128, return_sequences=True,input_shape=(self.past_size,self.features))(inputs)        
         #inputs_left_leg = layers.Input(shape=(self.past_size,left_leg))
         #x_left_leg = layers.LSTM(50, return_sequences=True,input_shape=(self.past_size,head))(inputs_left_leg)
-        x_left_leg = layers.LSTM(50, return_sequences=False)(x_left_leg)
+        #x_left_leg = layers.LSTM(100, return_sequences=False)(x_left_leg)
+        #x_left_leg = layers.Dense(128, activation="relu")(x_left_leg)
+        x_left_leg = layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size,self.features)))(inputs)
+        x_left_leg = layers.LSTM(256, return_sequences=False)(x_left_leg)
+        x_left_leg = layers.Dense(512, activation="relu")(x_left_leg)
+        x_left_leg = layers.Dropout(0.4)(x_left_leg)
         x_left_leg = layers.Dense(128, activation="relu")(x_left_leg)
         x_left_leg_out = layers.Dense(left_leg)(x_left_leg)
 
@@ -311,14 +355,6 @@ class Train:
         #train_data, val_data = self.train_val_data_HDF(RESULT_CSV)
         if self.config.CREATE_HDF:
             self.x_y_split_multifile(RESULT_CSV)
-        # Create an IODataset from a hdf5 file's dataset object  
-        #x_train = tfio.IODataset.from_hdf5(self.config.HDF, dataset='/x_train')
-        #y_train = tfio.IODataset.from_hdf5(self.config.HDF, dataset='/y_train')
-        #x_vali = tfio.IODataset.from_hdf5(self.config.HDF, dataset='/x_vali')
-        #y_vali= tfio.IODataset.from_hdf5(self.config.HDF, dataset='/y_vali')
-        # Zip together samples and corresponding labels
-        #train_data = tf.data.Dataset.zip((x_train,y_train)).batch(self.config.BATCH_SIZE, drop_remainder=True).prefetch(tf.data.experimental.AUTOTUNE)
-        #val_data = tf.data.Dataset.zip((x_vali,y_vali)).batch(self.config.BATCH_SIZE, drop_remainder=True).prefetch(tf.data.experimental.AUTOTUNE)
         
         model = self.model()
 
@@ -327,28 +363,13 @@ class Train:
         train_generator = Data_Generator(hdf['x_train'],hdf['y_train'],self.config.BATCH_SIZE)
         vali_generator  = Data_Generator(hdf['x_vali'],hdf['y_vali'],self.config.BATCH_SIZE)
 
-        #train_shape = hdf['x_train'].shape
-        #vali_shape = hdf['x_vali'].shape
-
-
-        #train_generator = self.generator_all(hdf['x_train'],hdf['y_train'],self.config.BATCH_SIZE)
-        #vali_generator = self.generator_all(hdf['x_vali'],hdf['y_vali'],self.config.BATCH_SIZE) 
-
-        #temp = next(train_generator)
-        #print("x.shape: " ,  temp[0].shape)
-        #print("****")
-        #print("y.shape: ", temp[1].shape)
-
-        #train_generator = tf.data.Dataset.from_generator(self.generator_train,(tf.float32,tf.float32,tf.float32),args=[self.config.BATCH_SIZE])
-        #vali_generator = tf.data.Dataset.from_generator(self.generator_vali,(tf.float32,tf.float32,tf.float32),args=[self.config.BATCH_SIZE])
-
         self.history = model.fit(
             train_generator,
             batch_size = self.config.BATCH_SIZE,
             epochs=self.config.EPOCHS,
             steps_per_epoch=self.config.STEPS_PER_EPOCH,
             validation_data=vali_generator,
-            validation_steps=self.config.VALIDATION_STEPS,
+            #validation_steps=self.config.VALIDATION_STEPS,
             verbose=self.config.VERBOSE,
             callbacks=callbacks,
             )
@@ -379,7 +400,7 @@ class Train:
             epochs=self.config.EPOCHS,
             steps_per_epoch=self.config.STEPS_PER_EPOCH,
             validation_data=vali_generator,
-            validation_steps=self.config.VALIDATION_STEPS,
+            #validation_steps=self.config.VALIDATION_STEPS,
             verbose=self.config.VERBOSE,
             callbacks=callbacks,
             )
@@ -398,13 +419,38 @@ class Train:
         plt.close()
 
     def generator(self, MODEL_PATH, df_init, frames_future):
-        model = tf.keras.models.load_model(MODEL_PATH+'.hdf5')
+        model = tf.keras.models.load_model(MODEL_PATH+'.hdf5', compile=False)
         model.summary()
         for _ in range(frames_future):
             x = df_init.tail(self.config.HIST_WINDOW)
             x = np.array(x)
             x = np.expand_dims(x, axis=0)
             prediction = model.predict(x)
+            if self.config.PROBABILISTIC: 
+                n_outs = int(prediction.shape[1] / 2)
+                mean = prediction[:, 0:n_outs]
+                sigma = np.exp(prediction[:, n_outs:])
+                prediction = mean
+            if len(prediction.shape) ==3:
+                prediction = prediction[0,:,:]
+            data_to_append = pd.DataFrame(prediction, columns=df_init.columns)
+            df_init = df_init.append(data_to_append, ignore_index=True)
+        df_init.to_csv("generate.csv")
+
+    def generator_multi_parts(self, MODEL_PATH, df_init, frames_future):
+        model = tf.keras.models.load_model(MODEL_PATH+'.hdf5')
+        model.summary()
+        for _ in range(frames_future):
+            x = df_init.tail(self.config.HIST_WINDOW)
+            x = np.array(x)
+            x = np.expand_dims(x, axis=0)
+            head,right_hand,left_hand,right_leg,left_leg = model.predict(x)
+            prediction = np.array([self.features*[0.0]])
+            prediction[:,head_id] = head[0,:]
+            prediction[:,right_hand_id] = right_hand[0,:]
+            prediction[:,left_hand_id] = left_hand[0,:]
+            prediction[:,right_leg_id] = right_leg[0,:]
+            prediction[:,left_leg_id] = left_leg[0,:]
             data_to_append = pd.DataFrame(prediction, columns=df_init.columns)
             df_init = df_init.append(data_to_append, ignore_index=True)
         df_init.to_csv("generate.csv")
@@ -412,16 +458,22 @@ class Train:
 
 class Data_Generator(keras.utils.Sequence) :
   
-  def __init__(self, x_hdf, y_hdf, batch_size) :
+  def __init__(self, x_hdf, y_hdf, batch_size,shuffle=True) :
     
     self.x = x_hdf
     self.y = y_hdf
     self.batch_size = batch_size
-    
+    self.shuffle = shuffle
+    self.on_epoch_end()    
     
   def __len__(self) :
     return (np.ceil(len(self.x) / float(self.batch_size))).astype(np.int)
   
+  def on_epoch_end(self):
+        #'Updates indexes after each epoch'
+        self.indexes = np.arange(len(self.x))
+        if self.shuffle == True:
+            np.random.shuffle(self.indexes)
   
   def __getitem__(self, idx) :
     batch_x = self.x[idx * self.batch_size : (idx+1) * self.batch_size]
@@ -431,17 +483,23 @@ class Data_Generator(keras.utils.Sequence) :
 
 class Data_Generator_multi_parts(keras.utils.Sequence) :
   
-  def __init__(self, x_hdf, y_hdf, batch_size) :
+  def __init__(self, x_hdf, y_hdf, batch_size,shuffle=True) :
     
     self.x = x_hdf
     self.y = y_hdf
     self.batch_size = batch_size
-    
+    self.shuffle = shuffle
+    self.on_epoch_end() 
     
   def __len__(self) :
     return (np.ceil(len(self.x) / float(self.batch_size))).astype(np.int)
   
-  
+  def on_epoch_end(self):
+        #'Updates indexes after each epoch'
+        self.indexes = np.arange(len(self.x))
+        if self.shuffle == True:
+            np.random.shuffle(self.indexes)
+
   def __getitem__(self, idx) :
     batch_x = self.x[idx * self.batch_size : (idx+1) * self.batch_size]
     batch_y = self.y[idx * self.batch_size : (idx+1) * self.batch_size]
@@ -452,6 +510,45 @@ class Data_Generator_multi_parts(keras.utils.Sequence) :
     batch_y_right_leg = batch_y[:,right_leg_id]   
     batch_y_left_leg = batch_y[:,left_leg_id]  
     return batch_x,[batch_y_head,batch_y_right_hand,batch_y_left_hand,batch_y_right_leg,batch_y_left_leg]
+
+class Attention(keras.layers.Layer):
+    # https://stackoverflow.com/questions/62948332/how-to-add-attention-layer-to-a-bi-lstm/62949137#62949137
+    def __init__(self, return_sequences=True):
+        self.return_sequences = return_sequences
+        super(Attention,self).__init__()
+        
+    def build(self, input_shape):
+        
+        self.W=self.add_weight(name="att_weight", shape=(input_shape[-1],1),
+                            initializer="normal")
+        self.b=self.add_weight(name="att_bias", shape=(input_shape[1],1),
+                            initializer="zeros")
+        
+        super(Attention,self).build(input_shape)
+        
+    def call(self, x):
+        
+        e = keras.backend.tanh(keras.backend.dot(x,self.W)+self.b)
+        a = keras.backend.softmax(e, axis=1)
+        output = x*a
+        
+        if self.return_sequences:
+            return output
+        
+        return keras.backend.sum(output, axis=1)
+
+    def get_config(self):
+
+        config = super().get_config().copy()
+        config.update({
+#             'vocab_size': self.vocab_size,
+            'num_layers': 2, # self.num_layers,
+            'units': 200, #self.units,
+            #'d_model': self.d_model,
+            'num_heads': 2 ,# self.num_heads,
+            'dropout': 0.25 , #self.dropout,
+        })
+        return config
 
 def calc_id():
     head = [0,1,2,3,4,5,6,7,8,9,10]        #0-11
@@ -502,3 +599,39 @@ def calc_id():
     return head_id,right_hand_id,left_hand_id,right_leg_id,left_leg_id
 
 head_id,right_hand_id,left_hand_id,right_leg_id,left_leg_id = calc_id()
+
+
+def gaussian_nll(ytrue, ypreds):
+    # https://gist.github.com/sergeyprokudin/4a50bf9b75e0559c1fcd2cae860b879e
+    # https://blog.tensorflow.org/2019/03/regression-with-probabilistic-layers-in.html
+    """Keras implmementation of multivariate Gaussian negative loglikelihood loss function. 
+    This implementation implies diagonal covariance matrix.
+    
+    Parameters
+    ----------
+    ytrue: tf.tensor of shape [n_samples, n_dims]
+        ground truth values
+    ypreds: tf.tensor of shape [n_samples, n_dims*2]
+        predicted mu and logsigma values (e.g. by your neural network)
+        
+    Returns
+    -------
+    neg_log_likelihood: float
+        negative loglikelihood averaged over samples
+        
+    This loss can then be used as a target loss for any keras model, e.g.:
+        model.compile(loss=gaussian_nll, optimizer='Adam') 
+    
+    """
+    
+    n_dims = int(int(ypreds.shape[1])/2)
+    mu = ypreds[:, 0:n_dims]
+    logsigma = ypreds[:, n_dims:]
+    
+    mse = -0.5*K.sum(K.square((ytrue-mu)/K.exp(logsigma)),axis=1)
+    sigma_trace = -K.sum(logsigma, axis=1)
+    log2pi = -0.5*n_dims*np.log(2*np.pi)
+    
+    log_likelihood = mse+sigma_trace+log2pi
+    
+    return K.mean(-log_likelihood)
