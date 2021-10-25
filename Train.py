@@ -157,6 +157,7 @@ class Train:
                 ]
             )
         elif self.config.MODEL_NAME == "autoencoder":
+            # https://www.analyticsvidhya.com/blog/2020/10/multivariate-multi-step-time-series-forecasting-using-stacked-lstm-sequence-to-sequence-autoencoder-in-tensorflow-2-0-keras/
             encoder_inputs = tf.keras.layers.Input(
                 shape=(self.past_size, self.features)
             )
@@ -243,15 +244,24 @@ class Train:
             model = keras.Model(inputs=inputs, outputs=outputs)
         elif self.config.MODEL_NAME == 'self_attention':
             # https://www.kaggle.com/danofer/covid-rna-lstm-self-attention-keras-model
-            model = keras.models.Sequential()
-            model.add(keras.layers.Bidirectional(keras.layers.LSTM(256, return_sequences=True,input_shape=(self.past_size, self.features))))
-            model.add(Attention(return_sequences=True)) 
-            model.add(keras.layers.LSTM(256,return_sequences=False))
-            model.add(tf.keras.layers.Dense(256, activation="relu"))
-            model.add(tf.keras.layers.Dropout(0.2))                   
-            model.add(tf.keras.layers.Dense(128, activation="relu"))
-            model.add(tf.keras.layers.Dense(self.features))
-            model.build(input_shape=(None,self.past_size, self.features))         
+            inputs = layers.Input(shape=(self.past_size,self.features))
+            x = layers.Bidirectional(layers.LSTM(256, return_sequences=True))(inputs)
+            x = Attention(return_sequences=True)(x)
+            x = keras.layers.LSTM(256,return_sequences=False)(x)
+            x = keras.layers.Dense(256, activation="relu")(x)
+            x = keras.layers.Dropout(0.2)(x)
+            x = keras.layers.Dense(128, activation="relu")(x)
+            outputs = keras.layers.Dense(self.features)(x)
+            model = keras.Model(inputs=inputs, outputs=outputs)
+            #model = keras.models.Sequential()
+            #model.add(layers.Bidirectional(layers.LSTM(256, return_sequences=True,input_shape=(self.past_size, self.features))))
+            #model.add(Attention(return_sequences=True)) 
+            #model.add(keras.layers.LSTM(256,return_sequences=False))
+            #model.add(tf.keras.layers.Dense(256, activation="relu"))
+            #model.add(tf.keras.layers.Dropout(0.2))                   
+            #model.add(tf.keras.layers.Dense(128, activation="relu"))
+            #model.add(tf.keras.layers.Dense(self.features))
+            #model.build(input_shape=(None,self.past_size, self.features))         
             
         elif self.config.MODEL_NAME == "custom":
             model = self.config.MODEL
@@ -430,7 +440,7 @@ class Train:
                 n_outs = int(prediction.shape[1] / 2)
                 mean = prediction[:, 0:n_outs]
                 sigma = np.exp(prediction[:, n_outs:])
-                prediction = mean
+                prediction = np.random.normal(mean, sigma)
             if len(prediction.shape) ==3:
                 prediction = prediction[0,:,:]
             data_to_append = pd.DataFrame(prediction, columns=df_init.columns)
@@ -511,20 +521,21 @@ class Data_Generator_multi_parts(keras.utils.Sequence) :
     batch_y_left_leg = batch_y[:,left_leg_id]  
     return batch_x,[batch_y_head,batch_y_right_hand,batch_y_left_hand,batch_y_right_leg,batch_y_left_leg]
 
-class Attention(keras.layers.Layer):
+class Attention(layers.Layer):
     # https://stackoverflow.com/questions/62948332/how-to-add-attention-layer-to-a-bi-lstm/62949137#62949137
-    def __init__(self, return_sequences=True):
+    def __init__(self, return_sequences=True, name=None, **kwargs):
+        super(Attention, self).__init__(name=name)
         self.return_sequences = return_sequences
-        super(Attention,self).__init__()
+        super(Attention, self).__init__(**kwargs)
         
     def build(self, input_shape):
         
         self.W=self.add_weight(name="att_weight", shape=(input_shape[-1],1),
-                            initializer="normal")
+                           initializer="glorot_uniform", trainable=True)
         self.b=self.add_weight(name="att_bias", shape=(input_shape[1],1),
-                            initializer="zeros")
-        
-        super(Attention,self).build(input_shape)
+                           initializer="glorot_uniform", trainable=True)
+    
+        super(Attention, self).build(input_shape)
         
     def call(self, x):
         
